@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
 from sqlalchemy import text
 from datetime import datetime, timedelta
 import uuid
-
+import secrets
+from fastapi.responses import RedirectResponse
+from services.google_oauth_service import google_oauth_service
 from database import get_db
 from schemas.auth import (
     UserRegister, UserLogin, ForgotPasswordRequest,
@@ -174,15 +176,142 @@ def auth_status(request: Request):
             }
         }
     return {"authenticated": False, "user": None}
+@router.get("/session/validate")
+def validate_session(request: Request, db=Depends(get_db)):
+    token = request.cookies.get(COOKIE_NAME) # Ensure this is COOKIE_NAME constant
+    if not token:
+        return {"authenticated": False, "user": None}
 
+    session_data = session_service.get_session(token)
+    if not session_data:
+        return {"authenticated": False, "user": None}
+
+    user_id = session_data.get("user_id")
+
+    # FIX: Removed 'auth_provider' and 'is_active' because they don't exist in your DB yet
+    row = db.execute(
+        text("SELECT user_id, username, email FROM users WHERE user_id = :uid"),
+        {"uid": user_id}
+    ).mappings().fetchone()
+
+    if row:
+        return {
+            "authenticated": True,
+            "user": {
+                "user_id": row["user_id"],
+                "username": row["username"],
+                "email": row["email"]
+                # Removed the extra fields here too
+            }
+        }
+    
+    return {"authenticated": False, "user": None}
+
+@router.get("/google")
+async def login_google():
+    """
+    Step 1: Redirect the user's browser to the Google Login Page.
+    """
+    # Generate a random state string for security
+    state = secrets.token_urlsafe(16)
+    
+    # Get the Google URL from our service
+    auth_url = google_oauth_service.get_authorization_url(state=state)
+    
+    # Redirect the user there
+    return RedirectResponse(url=auth_url)
+@router.get("/google/callback")
+async def google_callback(code: str, state: str, db=Depends(get_db)):
+    """
+    Handles Google Login matching YOUR specific schema.
+    Schema: user_id, username, email, password_hash (NULL), reset_token, etc.
+    """
+    try:
+        # 1. Exchange the code for an Access Token
+        tokens = await google_oauth_service.get_tokens(code)
+        access_token = tokens.get("access_token")
+        
+        if not access_token:
+            raise HTTPException(status_code=400, detail="Failed to get access token from Google")
+
+        # 2. Get User Info (Email, Name)
+        user_info = await google_oauth_service.get_user_info(access_token)
+        if not user_info:
+            raise HTTPException(status_code=400, detail="Failed to get user info from Google")
+            
+        google_email = user_info.get("email")
+        google_name = user_info.get("name")
+        
+        # 3. Check if user exists in DB
+        row = db.execute(
+            text("SELECT user_id, username, email FROM users WHERE email = :email"),
+            {"email": google_email}
+        ).fetchone()
+
+        user_id = None
+        username = google_name
+
+        if row:
+            # Case A: User exists -> Log them in
+            user_id = row.user_id
+            username = row.username
+            print(f"Logging in existing Google user: {google_email}")
+        else:
+            # Case B: New User -> Register them
+            user_id = str(uuid.uuid4())
+            print(f"Registering new Google user: {google_email}")
+            
+            # STRICT INSERT: Only columns that exist in your provided schema
+            # We explicitly pass None for password_hash since your schema allows NULL
+            db.execute(
+                text("""
+                    INSERT INTO users (user_id, username, email, password_hash) 
+                    VALUES (:user_id, :username, :email, :password_hash)
+                """),
+                {
+                    "user_id": user_id,
+                    "username": google_name,
+                    "email": google_email,
+                    "password_hash": None  # <--- Allowed because your schema says VARCHAR(255) NULL
+                }
+            )
+            db.commit()
+
+        # 4. Create Session
+        session_id = session_service.create_session(user_id, google_email, username)
+
+        # 5. Redirect to Frontend Dashboard
+        redirect_url = f"{settings.frontend_url}/analytics"
+        
+        response = RedirectResponse(url=redirect_url)
+        
+        # Set the secure session cookie
+        response.set_cookie(
+            key=COOKIE_NAME, 
+            value=session_id, 
+            **COOKIE_SETTINGS
+        )
+        
+        return response
+
+    except Exception as e:
+        print(f"Google Login Error: {e}")
+        # On failure, redirect to login page with error
+        return RedirectResponse(url=f"{settings.frontend_url}/login?error=google_auth_failed")
+    
 @router.post("/business")
 def create_business(user_id: str, business_name: str, region: str, currency: str, db=Depends(get_db)):
-    result = db.execute(
-        text(
-            "INSERT INTO businesses (user_id, business_name, business_region, business_currency) "
-            "VALUES (:user_id, :business_name, :region, :currency) RETURNING business_id"
-        ),
+    # 1. Generate a unique Business ID
+    biz_id = str(uuid.uuid4()) 
+
+    # 2. Insert with the ID
+    db.execute(
+        text("""
+            INSERT INTO businesses (business_id, user_id, business_name, business_region, business_currency) 
+            VALUES (:biz_id, :user_id, :business_name, :region, :currency)
+        """),
         {
+            "biz_id": biz_id,  # <--- Pass the generated ID here
             "user_id": user_id,
             "business_name": business_name,
             "region": region,
@@ -190,5 +319,6 @@ def create_business(user_id: str, business_name: str, region: str, currency: str
         }
     )
     db.commit()
-    business_id = result.scalar()
-    return {"business_id": business_id, "message": "Business created"}
+    
+    # 3. Return the generated ID
+    return {"business_id": biz_id, "message": "Business created"}

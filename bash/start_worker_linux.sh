@@ -2,7 +2,9 @@
 set -e
 
 if [ -f ".env" ]; then
-  export $(grep -v '^#' .env | xargs)
+  set -a
+  source .env
+  set +a
 else
   echo ".env file not found!"
   exit 1
@@ -14,7 +16,7 @@ docker run -d \
   --network spark-network \
   --name "$WORKER_NAME" \
   -e SPARK_WORKER_CORES=2 \
-  -e SPARK_WORKER_MEMORY=2g \
+  -e SPARK_WORKER_MEMORY=7g \
   -e PYSPARK_PYTHON=python3.10 \
   -e PYSPARK_DRIVER_PYTHON=python3.10 \
   -e SPARK_WORKER_OPTS="-Dspark.shuffle.service.enabled=true" \

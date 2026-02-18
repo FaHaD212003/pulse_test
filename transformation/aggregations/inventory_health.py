@@ -14,6 +14,13 @@ from pyspark.sql.functions import (
 )
 
 def inventory_health_aggregations(dataframes):
+    # Skip aggregation if required dataframes don't exist
+    required_dataframes = ["orders", "order_items", "inventory", "products"]
+    for df_name in required_dataframes:
+        if df_name not in dataframes or dataframes[df_name] is None or dataframes[df_name].count() == 0:
+            print(f"⚠️ Skipping inventory_health_aggregations: '{df_name}' dataframe not found or empty")
+            return
+    
     product_daily_sales = (
         dataframes["orders"]
         .filter(col("order_placed_at").isNotNull())
@@ -108,10 +115,10 @@ def inventory_health_aggregations(dataframes):
             spark_sum(
                 when(
                     col("quantity").isNotNull()
-                    & col("product_cost").isNotNull()
+                    & col("product_price").isNotNull()
                     & (col("quantity") > 0)
-                    & (col("product_cost") > 0),
-                    col("quantity") * col("product_cost"),
+                    & (col("product_price") > 0),
+                    col("quantity") * col("product_price"),
                 )
             ).alias("total_cogs")
         )

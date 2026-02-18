@@ -13,6 +13,13 @@ from pyspark.sql.functions import (
 
 
 def transform_customers(dataframes):
+    # Skip transformation if required dataframes don't exist
+    required_dataframes = ["customers", "orders"]
+    for df_name in required_dataframes:
+        if df_name not in dataframes or dataframes[df_name] is None or dataframes[df_name].count() == 0:
+            print(f"⚠️ Skipping transform_customers: '{df_name}' dataframe not found or empty")
+            return
+    
     customers_with_orders = (
         dataframes["customers"]
         .drop("order_recency_days", "order_frequency", "order_total_spent")
