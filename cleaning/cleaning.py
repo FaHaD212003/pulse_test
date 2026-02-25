@@ -11,8 +11,10 @@ This script orchestrates the complete data cleaning process including:
 - Detecting and cleaning gibberish patterns
 - Advanced text cleaning and validation
 - Saving cleaned data back to MinIO
+- Incremental processing support to avoid reprocessing files
 """
 
+import argparse
 from cleaning_config import create_spark_session, create_minio_client, get_bucket_name
 from schema import cast_dataframes
 from merge import merge_tables
@@ -34,25 +36,61 @@ from standardization import (
     normalize_dates_and_timestamps,
     validate_dates_and_timestamps,
     detect_gibberish_patterns,
+    convert_currency_columns,
 )
-from cleaning_utils import load_data_from_minio, save_data_to_minio, display_summary
-from pyspark.sql.functions import regexp_extract, col, when
+from cleaning_utils import (
+    load_data_from_minio,
+    save_data_to_minio,
+    display_summary,
+    get_file_paths_from_minio
+)
+from incremental_cleaner import IncrementalCleaner
+from pyspark.sql.functions import regexp_extract, col
 
 
-def main():
+def main(bucket_name=None, incremental=True, force_full=False):
     """
     Main function to execute the data cleaning pipeline.
+    
+    Args:
+        bucket_name: MinIO bucket name (business_id). If None, uses default from config.
+        incremental: If True, only process new files (default: True)
+        force_full: If True, reset state and reprocess all files (default: False)
     """
     print("=" * 60)
     print("🚀 STARTING DATA CLEANING PIPELINE")
+    if incremental and not force_full:
+        print("   Mode: INCREMENTAL (processing only new files)")
+    else:
+        print("   Mode: FULL (processing all files)")
     print("=" * 60)
 
     # 1. Initialize Spark and MinIO
     print("\n📌 Step 1: Initializing Spark and MinIO...")
     spark = create_spark_session()
     minio_client = create_minio_client()
-    bucket_name = get_bucket_name()
-    print("✅ Initialization complete")
+    
+    # Use provided bucket_name or fall back to default
+    if bucket_name is None:
+        bucket_name = get_bucket_name()
+    
+    print(f"✅ Initialization complete - Using bucket: {bucket_name}")
+
+    # 1a. Initialize incremental cleaner if in incremental mode
+    cleaner = None
+    if incremental:
+        print("\n📌 Step 1a: Initializing incremental cleaner...")
+        cleaner = IncrementalCleaner()
+        
+        if force_full:
+            print("⚠️  Force full mode: Resetting state table...")
+            cleaner.reset_state()
+        
+        # Show state summary
+        summary = cleaner.get_state_summary()
+        if summary.get('total_files', 0) > 0:
+            print(f"   Previously processed: {summary['total_files']} files")
+            print(f"   Last processed: {summary.get('last_processed', 'N/A')}")
 
     # 2. Load data from MinIO
     print("\n📌 Step 2: Loading data from MinIO...")
@@ -74,7 +112,27 @@ def main():
         "wishlist",
     ]
 
-    dataframes = load_data_from_minio(spark, minio_client, bucket_name, table_names)
+    # Get available file paths
+    all_file_paths = get_file_paths_from_minio(minio_client, bucket_name, table_names, folder="mapped")
+    print(f"   Found {len(all_file_paths)} files in MinIO")
+    
+    # Filter to unprocessed files if in incremental mode
+    if incremental and cleaner:
+        file_paths_to_process = cleaner.get_unprocessed_files(all_file_paths)
+        if not file_paths_to_process:
+            print("\n✅ No new files to process. Cleaning pipeline complete!")
+            spark.stop()
+            return
+    else:
+        file_paths_to_process = all_file_paths
+    
+    # Extract table names from file paths
+    tables_to_process = [fp.split('/')[-1].replace('.csv', '') for fp in file_paths_to_process]
+    print(f"   Processing {len(tables_to_process)} tables: {', '.join(tables_to_process)}")
+
+    dataframes, processed_file_paths = load_data_from_minio(
+        spark, minio_client, bucket_name, tables_to_process, folder="mapped"
+    )
     # print(f"✅ Loaded {len(dataframes)} tables")
 
     # 2a. Clean ID columns with regex
@@ -162,15 +220,36 @@ def main():
     # 18. Final data validation
     print("\n📌 Step 18: Running final data validation...")
     dataframes = validate_all_cleaned_data(dataframes)
-    # 19. Display summary
-    print("\n📌 Step 19: Generating summary...")
+
+    # 19. Convert currency columns
+    print("\n📌 Step 19: Converting currency columns...")
+    dataframes = convert_currency_columns(dataframes, bucket_name)
+
+    # 20. Display summary
+    print("\n📌 Step 20: Generating summary...")
     display_summary(dataframes)
-    # 20. Save cleaned data
-    print("\n📌 Step 20: Saving cleaned data to MinIO...")
+
+    # 21. Save cleaned data
+    print("\n📌 Step 21: Saving cleaned data to MinIO...")
     save_data_to_minio(dataframes, minio_client, bucket_name)
 
-    # 21. Stop Spark session
-    print("\n📌 Step 21: Stopping Spark session...")
+    # 21a. Mark files as processed if in incremental mode
+    if incremental and cleaner:
+        print("\n📌 Step 21a: Marking files as processed...")
+        file_records = {}
+        for table_name, file_path in processed_file_paths.items():
+            if table_name in dataframes:
+                df = dataframes[table_name]
+                record_count = df.count()
+                file_records[file_path] = {
+                    'record_count': record_count,
+                    'file_size': None,  # Could calculate if needed
+                    'checksum': None    # Could calculate if needed
+                }
+        cleaner.mark_multiple_processed(file_records)
+
+    # 22. Stop Spark session
+    print("\n📌 Step 22: Stopping Spark session...")
     spark.stop()
     print("✅ Spark session stopped")
 
@@ -180,4 +259,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description='Data cleaning pipeline for e-commerce data')
+    parser.add_argument('--bucket-name', type=str, help='MinIO bucket name (business_id)')
+    parser.add_argument('--full', action='store_true', 
+                       help='Run full cleaning (process all files, not just new ones)')
+    parser.add_argument('--force-full', action='store_true',
+                       help='Reset state and reprocess all files')
+    args = parser.parse_args()
+    
+    incremental = not args.full
+    main(bucket_name=args.bucket_name, incremental=incremental, force_full=args.force_full)

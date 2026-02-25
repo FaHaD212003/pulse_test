@@ -1,10 +1,10 @@
-import React from 'react';
 import HeroBackground from '@/assets/hero-background.png';
 import Illustration1 from '@/assets/illustration1.png';
 import ProcedureIllustration1 from '@/assets/procedure-illustration-1.png';
 import ProcedureIllustration2 from '@/assets/procedure-illustration-2.png';
 import BenefitsIllustration from '@/assets/benefits-illustration.png';
 import PreviewBackground from '@/assets/preview-background.png';
+import DashboardPreview from '@/assets/dashboard-preview.png';
 import {
     PiChartLineUpBold,
     PiPackageBold,
@@ -38,6 +38,7 @@ import Text from '@/components/global/Typography/Text';
 import CustomLink from '@/components/global/Typography/CustomLink';
 import GradientLine from '@/components/global/Shapes/GradientLine';
 import GradientCircle from '@/components/global/Shapes/GradientCircle';
+import { NavLink } from 'react-router-dom';
 
 const Landing = () => {
     const features = [
@@ -183,11 +184,12 @@ const Landing = () => {
 
                     {/* Log In Button */}
                     <div>
-                        <SecondaryButton
-                            label="Log In"
-                            onClick={() => console.log('Log In clicked')}
-                            className="! bg-white"
-                        />
+                        <NavLink to="/login">
+                            <SecondaryButton
+                                label="Log In"
+                                className="! bg-white"
+                            />
+                        </NavLink>
                     </div>
                 </div>
             </nav>
@@ -222,15 +224,18 @@ const Landing = () => {
 
                             {/* CTA Buttons */}
                             <div className="flex flex-col items-center md:flex-row gap-4 m-6">
-                                <SecondaryButton
-                                    label="Get Started"
-                                    onClick={() => console.log('Get Started clicked')}
-                                    className=""
-                                />
+                                <NavLink to="/signup">
+                                    <SecondaryButton
+                                        label="Get Started"
+                                        className=""
+                                    />
+                                </NavLink>
 
                                 <PrimaryButton
                                     label="Explore Features"
-                                    onClick={() => console.log('Explore Features clicked')}
+                                    onClick={() => {
+                                        document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+                                    }}
                                     className=""
                                 />
                             </div>
@@ -249,7 +254,7 @@ const Landing = () => {
             </section>
 
             {/* Features Section */}
-            <section className="features-section">
+            <section className="features-section" id="features">
                 <div className="features-container">
                     <div className="features-grid">
                         {/* Feature 1 - Data Integrity */}
@@ -539,17 +544,18 @@ const Landing = () => {
 
                             {/* CTA Button */}
                             <div className="dashboard-cta">
-                                <SecondaryButton
-                                    label="Get Started"
-                                    onClick={() => console.log('Get Started clicked')}
-                                />
+                                <NavLink to="/signup">
+                                    <SecondaryButton
+                                        label="Get Started"
+                                    />
+                                </NavLink>
                             </div>
                         </div>
 
                         {/* Right Dashboard Image */}
                         <div className="dashboard-preview-image-container">
                             <img
-                                src="/dashboard-preview.png"
+                                src={DashboardPreview}
                                 alt="Dashboard Preview"
                                 className="dashboard-preview-image"
                             />

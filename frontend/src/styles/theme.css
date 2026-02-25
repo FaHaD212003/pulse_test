@@ -1,3 +1,13 @@
+button:focus, button:focus-visible, button:active {
+    outline: 0 none;
+    outline-offset: 0;
+    border: 0 none;
+}
+
+button:focus:not(:focus-visible) {
+    outline: none;
+}
+
 /* Gradient Text Utilities */
 .gradient-text {
     background: radial-gradient(circle, var(--color-g2) 0%, var(--color-g1) 100%);
@@ -33,8 +43,8 @@
 .btn-primary {
     background: linear-gradient(135deg, var(--color-g1) 0%, var(--color-g2) 100%);
     color: white;
-    border: none;
     padding: var(--spacing-btn-y) var(--spacing-btn-x);
+    border: 1px solid transparent;
     border-radius: 0.5rem;
     font-weight: 500;
     cursor: pointer;
@@ -47,6 +57,7 @@
 .btn-primary:hover {
     box-shadow: 0 6px 20px 0 rgba(0, 197, 151, 0.5);
     transform: translateY(-2px);
+    border-color: var(--color-g2);
 }
 
 .btn-primary:active {
@@ -54,14 +65,13 @@
 }
 
 .btn-primary:disabled {
-    opacity: 0. 6;
+    opacity: 0.6;
     cursor: not-allowed;
 }
 
 /* Custom Secondary Button */
 .btn-secondary {
     background: white !important;
-    border: none;
     padding: var(--spacing-btn-y) var(--spacing-btn-x);
     border-radius: 0.5rem;
     font-weight: 500;
@@ -125,6 +135,19 @@
 
 .shape-gradient-linear {
     background: linear-gradient(135deg, var(--color-g1) 0%, var(--color-g2) 100%);
+}
+
+.p-invalid {
+    border-color: var(--color-danger) !important;
+}
+
+.p-invalid:enabled:hover {
+    border-color: var(--color-danger) !important;
+}
+
+.p-invalid:focus {
+    box-shadow: 0 0 0 0.2rem rgba(239, 72, 54, 0.25) !important;
+    border-color: var(--color-danger) !important;
 }
 
 .p-inputtext {
@@ -293,4 +316,106 @@
 
 .p-dropdown-label {
     border: 0;
+}
+
+.p-autocomplete-input {
+    width: 100%;
+}
+
+.p-autocomplete-item {
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.p-autocomplete-panel .p-autocomplete-item {
+    padding-left: 15px;
+    padding-right: 15px;
+}
+
+.p-button-loading-icon {
+    margin-right: 8px;
+}
+
+.p-progress-spinner .p-progress-spinner-circle {
+    stroke: var(--color-g1) !important;
+    stroke-dasharray: 89, 200;
+    stroke-dashoffset: 0;
+    animation: p-progress-spinner-dash 1.5s ease-in-out infinite;
+    stroke-linecap: round;
+}
+
+@keyframes p-progress-spinner-dash {
+    0% {
+        stroke-dasharray: 1, 200;
+        stroke-dashoffset: 0;
+    }
+    50% {
+        stroke-dasharray: 89, 200;
+        stroke-dashoffset: -35px;
+    }
+    100% {
+        stroke-dasharray: 89, 200;
+        stroke-dashoffset: -124px;
+    }
+}
+
+.p-dialog .p-dialog-content {
+    padding: 0px 30px 30px;
+}
+
+.p-dialog .p-dialog-header {
+    padding: 20px 25px 0px;
+}
+
+.p-tag {
+    padding: 3px 8px;
+}
+
+.p-sortable-column {
+    padding: 10px 0px;
+    margin: 0 10px;
+}
+
+.p-sortable-column .p-column-title {
+    padding: 0px 20px;
+}
+
+.p-datatable-tbody > tr > td {
+    padding: 10px 20px;
+}
+/* ----- Global Scrollbar Styling ----- */
+::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+    border: none;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #10b981;
+    border-radius: 9999px;
+    border: none;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #059669;
+}
+
+::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* Firefox scrollbar */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #10b981 transparent;
 }
